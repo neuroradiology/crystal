@@ -1,5 +1,5 @@
 require "spec"
-require "socket"
+require "socket/addrinfo"
 
 describe Socket::Addrinfo do
   describe ".resolve" do
@@ -36,6 +36,12 @@ describe Socket::Addrinfo do
         typeof(addrinfo).should eq(Socket::Addrinfo)
       end
     end
+
+    it "raises helpful message on getaddrinfo failure" do
+      expect_raises(Socket::Addrinfo::Error, "Hostname lookup for badhostname failed: ") do
+        Socket::Addrinfo.resolve("badhostname", 80, type: Socket::Type::DGRAM)
+      end
+    end
   end
 
   describe ".udp" do
@@ -57,5 +63,13 @@ describe Socket::Addrinfo do
       addrinfos = Socket::Addrinfo.udp("localhost", 80)
       typeof(addrinfos.first.ip_address).should eq(Socket::IPAddress)
     end
+  end
+
+  it "#inspect" do
+    addrinfos = Socket::Addrinfo.tcp("127.0.0.1", 12345)
+    addrinfos.first.inspect.should eq "Socket::Addrinfo(127.0.0.1:12345, INET, STREAM, TCP)"
+
+    addrinfos = Socket::Addrinfo.udp("127.0.0.1", 12345)
+    addrinfos.first.inspect.should eq "Socket::Addrinfo(127.0.0.1:12345, INET, DGRAM, UDP)"
   end
 end

@@ -21,7 +21,7 @@ module Unicode
   end
 
   # :nodoc:
-  def self.upcase(char : Char, options : CaseOptions)
+  def self.upcase(char : Char, options : CaseOptions) : Char
     result = check_upcase_ascii(char, options)
     return result if result
 
@@ -68,11 +68,13 @@ module Unicode
   private def self.check_upcase_turkic(char, options)
     if options.turkic?
       case char
-      when 'ı'; return 'I'
-      when 'i'; return 'İ'
+      when 'ı' then 'I'
+      when 'i' then 'İ'
+      else          nil
       end
+    else
+      nil
     end
-    nil
   end
 
   private def self.check_upcase_ranges(char)
@@ -86,7 +88,7 @@ module Unicode
   end
 
   # :nodoc:
-  def self.downcase(char : Char, options : CaseOptions)
+  def self.downcase(char : Char, options : CaseOptions) : Char
     result = check_downcase_ascii(char, options)
     return result if result
 
@@ -143,11 +145,13 @@ module Unicode
   private def self.check_downcase_turkic(char, options)
     if options.turkic?
       case char
-      when 'I'; return 'ı'
-      when 'İ'; return 'i'
+      when 'I' then 'ı'
+      when 'İ' then 'i'
+      else          nil
       end
+    else
+      nil
     end
-    nil
   end
 
   private def self.check_downcase_fold(char, options)
@@ -171,37 +175,37 @@ module Unicode
   end
 
   # :nodoc:
-  def self.lowercase?(char : Char)
+  def self.lowercase?(char : Char) : Bool
     in_category?(char.ord, category_Ll)
   end
 
   # :nodoc:
-  def self.uppercase?(char : Char)
+  def self.uppercase?(char : Char) : Bool
     in_category?(char.ord, category_Lu)
   end
 
   # :nodoc:
-  def self.letter?(char : Char)
+  def self.letter?(char : Char) : Bool
     in_any_category?(char.ord, category_Lu, category_Ll, category_Lt)
   end
 
   # :nodoc:
-  def self.number?(char : Char)
+  def self.number?(char : Char) : Bool
     in_any_category?(char.ord, category_Nd, category_Nl, category_No)
   end
 
   # :nodoc:
-  def self.control?(char : Char)
+  def self.control?(char : Char) : Bool
     in_any_category?(char.ord, category_Cs, category_Co, category_Cn, category_Cf, category_Cc)
   end
 
   # :nodoc:
-  def self.whitespace?(char : Char)
+  def self.whitespace?(char : Char) : Bool
     in_any_category?(char.ord, category_Zs, category_Zl, category_Zp)
   end
 
   # :nodoc:
-  def self.mark?(char : Char)
+  def self.mark?(char : Char) : Bool
     in_any_category?(char.ord, category_Mn, category_Me, category_Mc)
   end
 
@@ -232,7 +236,7 @@ module Unicode
     end
   end
 
-  private def self.in_any_category?(needle, *haystacks)
+  private def self.in_any_category?(needle, *haystacks) : Bool
     haystacks.any? { |haystack| in_category?(needle, haystack) }
   end
 end

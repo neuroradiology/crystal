@@ -1,5 +1,11 @@
 require "../spec_helper"
-require "big"
+require "../../support/channel"
+require "spec/helpers/iterate"
+
+{% unless flag?(:win32) %}
+  require "socket"
+  require "big"
+{% end %}
 require "base64"
 
 # This is a non-optimized version of IO::Memory so we can test
@@ -51,8 +57,6 @@ private class SimpleIOMemory < IO
 
     slice.copy_to(@buffer + @bytesize, count)
     @bytesize += count
-
-    nil
   end
 
   def to_slice
@@ -68,19 +72,36 @@ private class SimpleIOMemory < IO
     self
   end
 
-  private def check_needs_resize
-    resize_to_capacity(@capacity * 2) if @bytesize == @capacity
-  end
-
   private def resize_to_capacity(capacity)
     @capacity = capacity
     @buffer = @buffer.realloc(@capacity)
   end
 end
 
+private class OneByOneIO < IO
+  @bytes : Bytes
+
+  def initialize(string)
+    @bytes = string.to_slice
+    @pos = 0
+  end
+
+  def read(slice : Bytes)
+    return 0 if slice.empty?
+    return 0 if @pos >= @bytes.size
+
+    slice[0] = @bytes[@pos]
+    @pos += 1
+    1
+  end
+
+  def write(slice : Bytes) : Nil
+  end
+end
+
 describe IO do
   describe "partial read" do
-    it "doesn't block on first read.  blocks on 2nd read" do
+    pending_win32 "doesn't block on first read.  blocks on 2nd read" do
       IO.pipe do |read, write|
         write.puts "hello"
         slice = Bytes.new 1024
@@ -88,7 +109,7 @@ describe IO do
         read.read_timeout = 1
         read.read(slice).should eq(6)
 
-        expect_raises(IO::Timeout) do
+        expect_raises(IO::TimeoutError) do
           read.read_timeout = 0.0000001
           read.read(slice)
         end
@@ -96,41 +117,11 @@ describe IO do
     end
   end
 
-  describe "IO iterators" do
-    it "iterates by line" do
-      io = SimpleIOMemory.new("hello\nbye\n")
-      lines = io.each_line
-      lines.next.should eq("hello")
-      lines.next.should eq("bye")
-      lines.next.should be_a(Iterator::Stop)
-    end
+  it_iterates "#each_line", ["hello", "bye"], SimpleIOMemory.new("hello\nbye\n").each_line
+  it_iterates "#each_line(chomp: false)", ["hello\n", "bye\n"], SimpleIOMemory.new("hello\nbye\n").each_line(chomp: false)
 
-    it "iterates by line with chomp false" do
-      io = SimpleIOMemory.new("hello\nbye\n")
-      lines = io.each_line(chomp: false)
-      lines.next.should eq("hello\n")
-      lines.next.should eq("bye\n")
-      lines.next.should be_a(Iterator::Stop)
-    end
-
-    it "iterates by char" do
-      io = SimpleIOMemory.new("abあぼ")
-      chars = io.each_char
-      chars.next.should eq('a')
-      chars.next.should eq('b')
-      chars.next.should eq('あ')
-      chars.next.should eq('ぼ')
-      chars.next.should be_a(Iterator::Stop)
-    end
-
-    it "iterates by byte" do
-      io = SimpleIOMemory.new("ab")
-      bytes = io.each_byte
-      bytes.next.should eq('a'.ord)
-      bytes.next.should eq('b'.ord)
-      bytes.next.should be_a(Iterator::Stop)
-    end
-  end
+  it_iterates "#char", ['a', 'b', 'あ', 'ぼ'], SimpleIOMemory.new("abあぼ").each_char
+  it_iterates "#char", ['a'.ord.to_u8, 'b'.ord.to_u8], SimpleIOMemory.new("ab").each_byte
 
   it "copies" do
     string = "abあぼ"
@@ -386,6 +377,40 @@ describe IO do
 
       str.read_fully?(slice).should be_nil
     end
+
+    it "raises if trying to read to an IO not opened for reading" do
+      IO.pipe do |r, w|
+        expect_raises(IO::Error, "File not open for reading") do
+          w.gets
+        end
+      end
+    end
+
+    describe ".same_content?" do
+      it "compares two ios, one way (true)" do
+        io1 = OneByOneIO.new("hello")
+        io2 = IO::Memory.new("hello")
+        IO.same_content?(io1, io2).should be_true
+      end
+
+      it "compares two ios, second way (true)" do
+        io1 = OneByOneIO.new("hello")
+        io2 = IO::Memory.new("hello")
+        IO.same_content?(io2, io1).should be_true
+      end
+
+      it "compares two ios, one way (false)" do
+        io1 = OneByOneIO.new("hello")
+        io2 = IO::Memory.new("hella")
+        IO.same_content?(io1, io2).should be_false
+      end
+
+      it "compares two ios, second way (false)" do
+        io1 = OneByOneIO.new("hello")
+        io2 = IO::Memory.new("hella")
+        IO.same_content?(io2, io1).should be_false
+      end
+    end
   end
 
   describe "write operations" do
@@ -473,9 +498,20 @@ describe IO do
       io.skip_to_end
       io.read_byte.should be_nil
     end
+
+    it "raises if trying to write to an IO not opened for writing" do
+      IO.pipe do |r, w|
+        # unless sync is used the flush on close triggers the exception again
+        r.sync = true
+
+        expect_raises(IO::Error, "File not open for writing") do
+          r << "hello"
+        end
+      end
+    end
   end
 
-  describe "encoding" do
+  pending_win32 describe: "encoding" do
     describe "decode" do
       it "gets_to_end" do
         str = "Hello world" * 200
@@ -699,6 +735,24 @@ describe IO do
         io.read_string(11).should eq("Hello world")
         io.gets_to_end.should eq("\r\nFoo\nBar")
       end
+
+      pending_win32 "gets ascii from socket (#9056)" do
+        server = TCPServer.new "localhost", 0
+        sock = TCPSocket.new "localhost", server.local_address.port
+        begin
+          sock.set_encoding("ascii")
+          spawn do
+            client = server.accept
+            message = client.gets
+            client << "#{message}\n"
+          end
+          sock << "K\n"
+          sock.gets.should eq("K")
+        ensure
+          server.close
+          sock.close
+        end
+      end
     end
 
     describe "encode" do
@@ -822,54 +876,56 @@ describe IO do
         io.encoding.should eq("UTF-16LE")
       end
     end
+  end
 
-    describe "#close" do
-      it "aborts 'read' in a different thread" do
-        ch = Channel(Symbol).new(1)
+  pending_win32 describe: "#close" do
+    it "aborts 'read' in a different thread" do
+      ch = Channel(Symbol).new(1)
 
-        IO.pipe do |read, write|
-          spawn do
-            ch.send :start
-            read.gets
-          rescue
-            ch.send :end
-          end
-
-          delay(1) { ch.send :timeout }
-
-          ch.receive.should eq(:start)
-          read.close
-          ch.receive.should eq(:end)
+      IO.pipe do |read, write|
+        f = spawn do
+          ch.send :start
+          read.gets
+        rescue
+          ch.send :end
         end
+
+        schedule_timeout ch
+
+        ch.receive.should eq(:start)
+        wait_until_blocked f
+
+        read.close
+        ch.receive.should eq(:end)
       end
+    end
 
-      it "aborts 'write' in a different thread" do
-        ch = Channel(Symbol).new(1)
+    it "aborts 'write' in a different thread" do
+      ch = Channel(Symbol).new(1)
 
-        IO.pipe do |read, write|
-          f = spawn do
-            ch.send :start
-            loop do
-              write.puts "some line"
-            end
-          rescue
-            ch.send :end
+      IO.pipe do |read, write|
+        f = spawn do
+          ch.send :start
+          loop do
+            write.puts "some line"
           end
-
-          delay(1) { ch.send :timeout }
-
-          ch.receive.should eq(:start)
-          while f.running?
-            # Wait until the fiber is blocked
-            Fiber.yield
-          end
-          write.close
-          ch.receive.should eq(:end)
+        rescue
+          ch.send :end
         end
+
+        schedule_timeout ch
+
+        ch.receive.should eq(:start)
+        wait_until_blocked f
+
+        write.close
+        ch.receive.should eq(:end)
       end
     end
   end
 
-  typeof(STDIN.cooked { })
-  typeof(STDIN.cooked!)
+  {% unless flag?(:win32) %}
+    typeof(STDIN.cooked { })
+    typeof(STDIN.cooked!)
+  {% end %}
 end

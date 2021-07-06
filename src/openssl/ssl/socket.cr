@@ -48,20 +48,33 @@ abstract class OpenSSL::SSL::Socket < IO
         socket.close
       end
     end
+
+    # Returns the `OpenSSL::X509::Certificate` the peer presented.
+    def peer_certificate : OpenSSL::X509::Certificate
+      super.not_nil!
+    end
   end
 
   class Server < Socket
-    def initialize(io, context : Context::Server = Context::Server.new, sync_close : Bool = false)
+    def initialize(io, context : Context::Server = Context::Server.new,
+                   sync_close : Bool = false, accept : Bool = true)
       super(io, context, sync_close)
-      begin
-        ret = LibSSL.ssl_accept(@ssl)
-        unless ret == 1
-          io.close if sync_close
-          raise OpenSSL::SSL::Error.new(@ssl, ret, "SSL_accept")
+
+      if accept
+        begin
+          self.accept
+        rescue ex
+          LibSSL.ssl_free(@ssl) # GC never calls finalize, avoid mem leak
+          raise ex
         end
-      rescue ex
-        LibSSL.ssl_free(@ssl) # GC never calls finalize, avoid mem leak
-        raise ex
+      end
+    end
+
+    def accept : Nil
+      ret = LibSSL.ssl_accept(@ssl)
+      unless ret == 1
+        @bio.io.close if @sync_close
+        raise OpenSSL::SSL::Error.new(@ssl, ret, "SSL_accept")
       end
     end
 
@@ -107,7 +120,7 @@ abstract class OpenSSL::SSL::Socket < IO
     LibSSL.ssl_free(@ssl)
   end
 
-  def unbuffered_read(slice : Bytes)
+  def unbuffered_read(slice : Bytes) : Int32
     check_open
 
     count = slice.size
@@ -126,7 +139,7 @@ abstract class OpenSSL::SSL::Socket < IO
     end
   end
 
-  def unbuffered_write(slice : Bytes)
+  def unbuffered_write(slice : Bytes) : Nil
     check_open
 
     return if slice.empty?
@@ -136,7 +149,6 @@ abstract class OpenSSL::SSL::Socket < IO
     unless bytes > 0
       raise OpenSSL::SSL::Error.new(@ssl, bytes, "SSL_write")
     end
-    nil
   end
 
   def unbuffered_flush
@@ -152,7 +164,7 @@ abstract class OpenSSL::SSL::Socket < IO
     end
   {% end %}
 
-  def unbuffered_close
+  def unbuffered_close : Nil
     return if @closed
     @closed = true
 
@@ -178,7 +190,7 @@ abstract class OpenSSL::SSL::Socket < IO
 
         # ret == 0, retry, shutdown is not complete yet
       end
-    rescue IO::Error | Errno
+    rescue IO::Error
     ensure
       @bio.io.close if @sync_close
     end
@@ -249,5 +261,18 @@ abstract class OpenSSL::SSL::Socket < IO
     else
       raise NotImplementedError.new("#{io.class}#write_timeout=")
     end
+  end
+
+  # Returns the `OpenSSL::X509::Certificate` the peer presented, if a
+  # connection was esablished.
+  #
+  # NOTE: Due to the protocol definition, a TLS/SSL server will always send a
+  # certificate, if present. A client will only send a certificate when
+  # explicitly requested to do so by the server (see `SSL_CTX_set_verify(3)`). If
+  # an anonymous cipher is used, no certificates are sent. That a certificate
+  # is returned does not indicate information about the verification state.
+  def peer_certificate : OpenSSL::X509::Certificate?
+    cert = LibSSL.ssl_get_peer_certificate(@ssl)
+    OpenSSL::X509::Certificate.new cert if cert
   end
 end

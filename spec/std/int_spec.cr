@@ -1,12 +1,15 @@
-require "spec"
-require "big"
+require "./spec_helper"
+{% unless flag?(:win32) %}
+  require "big"
+{% end %}
+require "spec/helpers/iterate"
 
 private def to_s_with_io(num)
-  String.build { |str| num.to_s(str) }
+  String.build { |io| num.to_s(io) }
 end
 
 private def to_s_with_io(num, base, upcase = false)
-  String.build { |str| num.to_s(base, str, upcase) }
+  String.build { |io| num.to_s(io, base, upcase: upcase) }
 end
 
 describe "Int" do
@@ -159,6 +162,8 @@ describe "Int" do
     it { 4.lcm(6).should eq(12) }
     it { 0.lcm(2).should eq(0) }
     it { 2.lcm(0).should eq(0) }
+
+    it "doesn't silently overflow" { 2_000_000.lcm(3_000_000).should eq(6_000_000) }
   end
 
   describe "to_s in base" do
@@ -340,7 +345,7 @@ describe "Int" do
       a.should eq(6)
     end
 
-    it "does downards" do
+    it "does downwards" do
       a = 0
       4.to(2) { |i| a += i }.should be_nil
       a.should eq(9)
@@ -409,30 +414,82 @@ describe "Int" do
     end
   end
 
-  it "casts" do
-    Int8.new(1).should be_a(Int8)
-    Int8.new(1).should eq(1)
+  describe ".new" do
+    it "String overload" do
+      Int8.new("1").should be_a(Int8)
+      Int8.new("1").should eq(1)
+      expect_raises ArgumentError do
+        Int8.new(" 1 ", whitespace: false)
+      end
 
-    Int16.new(1).should be_a(Int16)
-    Int16.new(1).should eq(1)
+      Int16.new("1").should be_a(Int16)
+      Int16.new("1").should eq(1)
+      expect_raises ArgumentError do
+        Int16.new(" 1 ", whitespace: false)
+      end
 
-    Int32.new(1).should be_a(Int32)
-    Int32.new(1).should eq(1)
+      Int32.new("1").should be_a(Int32)
+      Int32.new("1").should eq(1)
+      expect_raises ArgumentError do
+        Int32.new(" 1 ", whitespace: false)
+      end
 
-    Int64.new(1).should be_a(Int64)
-    Int64.new(1).should eq(1)
+      Int64.new("1").should be_a(Int64)
+      Int64.new("1").should eq(1)
+      expect_raises ArgumentError do
+        Int64.new(" 1 ", whitespace: false)
+      end
 
-    UInt8.new(1).should be_a(UInt8)
-    UInt8.new(1).should eq(1)
+      UInt8.new("1").should be_a(UInt8)
+      UInt8.new("1").should eq(1)
+      expect_raises ArgumentError do
+        UInt8.new(" 1 ", whitespace: false)
+      end
 
-    UInt16.new(1).should be_a(UInt16)
-    UInt16.new(1).should eq(1)
+      UInt16.new("1").should be_a(UInt16)
+      UInt16.new("1").should eq(1)
+      expect_raises ArgumentError do
+        UInt16.new(" 1 ", whitespace: false)
+      end
 
-    UInt32.new(1).should be_a(UInt32)
-    UInt32.new(1).should eq(1)
+      UInt32.new("1").should be_a(UInt32)
+      UInt32.new("1").should eq(1)
+      expect_raises ArgumentError do
+        UInt32.new(" 1 ", whitespace: false)
+      end
 
-    UInt64.new(1).should be_a(UInt64)
-    UInt64.new(1).should eq(1)
+      UInt64.new("1").should be_a(UInt64)
+      UInt64.new("1").should eq(1)
+      expect_raises ArgumentError do
+        UInt64.new(" 1 ", whitespace: false)
+      end
+    end
+
+    it "fallback overload" do
+      Int8.new(1).should be_a(Int8)
+      Int8.new(1).should eq(1)
+
+      Int16.new(1).should be_a(Int16)
+      Int16.new(1).should eq(1)
+
+      Int32.new(1).should be_a(Int32)
+      Int32.new(1).should eq(1)
+
+      Int64.new(1).should be_a(Int64)
+      Int64.new(1).should eq(1)
+
+      UInt8.new(1).should be_a(UInt8)
+      UInt8.new(1).should eq(1)
+
+      UInt16.new(1).should be_a(UInt16)
+      UInt16.new(1).should eq(1)
+
+      UInt32.new(1).should be_a(UInt32)
+      UInt32.new(1).should eq(1)
+
+      UInt64.new(1).should be_a(UInt64)
+      UInt64.new(1).should eq(1)
+    end
   end
 
   describe "arithmetic division /" do
@@ -524,32 +581,8 @@ describe "Int" do
     (53 % 532_000_782_588_491_410).should eq(53)
   end
 
-  it "does times" do
-    i = sum = 0
-    3.times do |n|
-      i += 1
-      sum += n
-    end.should be_nil
-    i.should eq(3)
-    sum.should eq(3)
-  end
-
-  it "gets times iterator" do
-    iter = 3.times
-    iter.next.should eq(0)
-    iter.next.should eq(1)
-    iter.next.should eq(2)
-    iter.next.should be_a(Iterator::Stop)
-  end
-
-  it "gets times iterator for UInt32 (#5019)" do
-    iter = 4_u32.times
-    iter.next.should be_a(UInt32)
-
-    ary = 4_u32.times.to_a
-    ary.should be_a(Array(UInt32))
-    ary.should eq([0, 1, 2, 3])
-  end
+  it_iterates "#times", [0, 1, 2], 3.times
+  it_iterates "#times for UInt32 (#5019)", [0_u32, 1_u32, 2_u32, 3_u32], 4_u32.times
 
   it "does %" do
     (7 % 5).should eq(2)
@@ -729,7 +762,7 @@ describe "Int" do
     {% end %}
   end
 
-  it "compares signed vs. unsigned integers" do
+  pending_win32 "compares signed vs. unsigned integers" do
     signed_ints = [Int8::MAX, Int16::MAX, Int32::MAX, Int64::MAX, Int8::MIN, Int16::MIN, Int32::MIN, Int64::MIN, 0_i8, 0_i16, 0_i32, 0_i64]
     unsigned_ints = [UInt8::MAX, UInt16::MAX, UInt32::MAX, UInt64::MAX, 0_u8, 0_u16, 0_u32, 0_u64]
 
@@ -747,17 +780,15 @@ describe "Int" do
     end
   end
 
-  {% if compare_versions(Crystal::VERSION, "0.26.1") > 0 %}
-    it "compares equality and inequality of signed vs. unsigned integers" do
-      x = -1
-      y = x.unsafe_as(UInt32)
+  it "compares equality and inequality of signed vs. unsigned integers" do
+    x = -1
+    y = x.unsafe_as(UInt32)
 
-      (x == y).should be_false
-      (y == x).should be_false
-      (x != y).should be_true
-      (y != x).should be_true
-    end
-  {% end %}
+    (x == y).should be_false
+    (y == x).should be_false
+    (x != y).should be_true
+    (y != x).should be_true
+  end
 
   it "clones" do
     [1_u8, 2_u16, 3_u32, 4_u64, 5_i8, 6_i16, 7_i32, 8_i64].each do |value|
@@ -776,5 +807,63 @@ describe "Int" do
   it "#unsafe_chr" do
     65.unsafe_chr.should eq('A')
     (0x10ffff + 1).unsafe_chr.ord.should eq(0x10ffff + 1)
+  end
+
+  describe "#bit_length" do
+    it "for primitive integers" do
+      0.bit_length.should eq(0)
+      0b1.bit_length.should eq(1)
+      0b1001.bit_length.should eq(4)
+      0b1001001_i64.bit_length.should eq(7)
+      0b1111111111.bit_length.should eq(10)
+      0b1000000000.bit_length.should eq(10)
+      -1.bit_length.should eq(0)
+      -10.bit_length.should eq(4)
+    end
+
+    pending_win32 "for BigInt" do
+      (10.to_big_i ** 20).bit_length.should eq(67)
+      (10.to_big_i ** 309).bit_length.should eq(1027)
+      (10.to_big_i ** 3010).bit_length.should eq(10000)
+    end
+  end
+
+  describe "#digits" do
+    it "works for positive numbers or zero" do
+      0.digits.should eq([0])
+      1.digits.should eq([1])
+      10.digits.should eq([0, 1])
+      123.digits.should eq([3, 2, 1])
+      123456789.digits.should eq([9, 8, 7, 6, 5, 4, 3, 2, 1])
+    end
+
+    it "works for maximums" do
+      Int32::MAX.digits.should eq(Int32::MAX.to_s.chars.map(&.to_i).reverse)
+      Int64::MAX.digits.should eq(Int64::MAX.to_s.chars.map(&.to_i).reverse)
+      UInt64::MAX.digits.should eq(UInt64::MAX.to_s.chars.map(&.to_i).reverse)
+    end
+
+    it "works for non-Int32" do
+      digits = 123_i64.digits
+      digits.should eq([3, 2, 1])
+    end
+
+    it "works with a base" do
+      123.digits(16).should eq([11, 7])
+    end
+
+    it "raises for invalid base" do
+      [1, 0, -1].each do |base|
+        expect_raises(ArgumentError, "Invalid base #{base}") do
+          123.digits(base)
+        end
+      end
+    end
+
+    it "raises for negative numbers" do
+      expect_raises(ArgumentError, "Can't request digits of negative number") do
+        -123.digits
+      end
+    end
   end
 end

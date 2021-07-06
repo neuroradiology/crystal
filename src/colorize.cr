@@ -135,18 +135,23 @@ module Colorize
   def self.reset(io = STDOUT)
     io << "\e[0m" if enabled?
   end
-end
 
-def with_color
-  "".colorize
-end
-
-def with_color(color : Symbol)
-  "".colorize(color)
+  # Helper method to use colorize with `IO`.
+  #
+  # ```
+  # io = IO::Memory.new
+  # io << "not-green"
+  # Colorize.with.green.bold.surround(io) do
+  #   io << "green and bold if Colorize.enabled"
+  # end
+  # ```
+  def self.with : Colorize::Object(String)
+    "".colorize
+  end
 end
 
 module Colorize::ObjectExtensions
-  def colorize
+  def colorize : Colorize::Object
     Colorize::Object.new(self)
   end
 
@@ -209,12 +214,16 @@ module Colorize
     blue : UInt8 do
     def fore(io : IO) : Nil
       io << "38;2;"
-      {red, green, blue}.join(';', io, &.to_s io)
+      io << red << ";"
+      io << green << ";"
+      io << blue
     end
 
     def back(io : IO) : Nil
       io << "48;2;"
-      {red, green, blue}.join(';', io, &.to_s io)
+      io << red << ";"
+      io << green << ";"
+      io << blue
     end
   end
 end
@@ -269,7 +278,7 @@ struct Colorize::Object(T)
     end
   {% end %}
 
-  def fore(color : Symbol)
+  def fore(color : Symbol) : self
     {% for name in COLORS %}
       if color == :{{name.id}}
         @fore = ColorANSI::{{name.camelcase.id}}
@@ -280,11 +289,11 @@ struct Colorize::Object(T)
     raise ArgumentError.new "Unknown color: #{color}"
   end
 
-  def fore(@fore : Color)
+  def fore(@fore : Color) : self
     self
   end
 
-  def back(color : Symbol)
+  def back(color : Symbol) : self
     {% for name in COLORS %}
       if color == :{{name.id}}
         @back = ColorANSI::{{name.camelcase.id}}
@@ -295,11 +304,11 @@ struct Colorize::Object(T)
     raise ArgumentError.new "Unknown color: #{color}"
   end
 
-  def back(@back : Color)
+  def back(@back : Color) : self
     self
   end
 
-  def mode(mode : Symbol)
+  def mode(mode : Symbol) : self
     {% for name in MODES %}
       if mode == :{{name.id}}
         @mode |= MODE_{{name.upcase.id}}_FLAG

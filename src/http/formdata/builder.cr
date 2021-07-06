@@ -29,7 +29,7 @@ module HTTP::FormData
     # builder = HTTP::FormData::Builder.new(io, "a4VF")
     # builder.content_type # => "multipart/form-data; boundary=\"a4VF\""
     # ```
-    def content_type
+    def content_type : String
       String.build do |str|
         str << "multipart/form-data; boundary=\""
         HTTP.quote_string(@boundary, str)
@@ -91,19 +91,19 @@ module HTTP::FormData
 
         if creation_time = metadata.creation_time
           io << %(; creation-date=")
-          creation_time.to_s("%a, %d %b %Y %H:%M:%S %z", io)
+          creation_time.to_s(io, "%a, %d %b %Y %H:%M:%S %z")
           io << '"'
         end
 
         if modification_time = metadata.modification_time
           io << %(; modification-date=")
-          modification_time.to_s("%a, %d %b %Y %H:%M:%S %z", io)
+          modification_time.to_s(io, "%a, %d %b %Y %H:%M:%S %z")
           io << '"'
         end
 
         if read_time = metadata.read_time
           io << %(; read-date=")
-          read_time.to_s("%a, %d %b %Y %H:%M:%S %z", io)
+          read_time.to_s(io, "%a, %d %b %Y %H:%M:%S %z")
           io << '"'
         end
 

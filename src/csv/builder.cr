@@ -68,7 +68,7 @@ class CSV::Builder
     end
   end
 
-  # ditto
+  # :ditto:
   def row(*values)
     row values
   end
@@ -119,7 +119,7 @@ class CSV::Builder
       end
     end
 
-    # ditto
+    # :ditto:
     def <<(value : Nil | Bool | Number)
       case @quoting
       when .all?
@@ -133,20 +133,20 @@ class CSV::Builder
       end
     end
 
-    # ditto
+    # :ditto:
     def <<(value)
       self << value.to_s
     end
 
     # Appends the given values to this row.
-    def concat(values : Enumerable)
+    def concat(values : Enumerable) : Nil
       values.each do |value|
         self << value
       end
     end
 
-    # ditto
-    def concat(*values)
+    # :ditto:
+    def concat(*values) : Nil
       concat values
     end
 
@@ -162,12 +162,16 @@ class CSV::Builder
           case byte.unsafe_chr
           when @separator, @quote_char, '\n'
             return true
+          else
+            # keep scanning
           end
         end
+        false
       when .all?
-        return true
+        true
+      else
+        false
       end
-      return false
     end
   end
 end

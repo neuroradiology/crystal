@@ -26,6 +26,7 @@ lib LibIntrinsics
 
   fun read_cycle_counter = "llvm.readcyclecounter" : UInt64
   fun bswap32 = "llvm.bswap.i32"(id : UInt32) : UInt32
+  fun bswap16 = "llvm.bswap.i16"(id : UInt16) : UInt16
 
   fun popcount8 = "llvm.ctpop.i8"(src : Int8) : Int8
   fun popcount16 = "llvm.ctpop.i16"(src : Int16) : Int16
@@ -48,7 +49,7 @@ lib LibIntrinsics
   fun va_start = "llvm.va_start"(ap : Void*)
   fun va_end = "llvm.va_end"(ap : Void*)
 
-  {% if flag?(:i686) || flag?(:x86_64) %}
+  {% if flag?(:i386) || flag?(:x86_64) %}
     fun pause = "llvm.x86.sse2.pause"
   {% end %}
 end
@@ -59,7 +60,7 @@ module Intrinsics
   end
 
   def self.pause
-    {% if flag?(:i686) || flag?(:x86_64) %}
+    {% if flag?(:i386) || flag?(:x86_64) %}
       LibIntrinsics.pause
     {% end %}
   end
@@ -92,23 +93,27 @@ module Intrinsics
     LibIntrinsics.read_cycle_counter
   end
 
-  def self.bswap32(id)
+  def self.bswap32(id) : UInt32
     LibIntrinsics.bswap32(id)
   end
 
-  def self.popcount8(src)
+  def self.bswap16(id)
+    LibIntrinsics.bswap16(id)
+  end
+
+  def self.popcount8(src) : Int8
     LibIntrinsics.popcount8(src)
   end
 
-  def self.popcount16(src)
+  def self.popcount16(src) : Int16
     LibIntrinsics.popcount16(src)
   end
 
-  def self.popcount32(src)
+  def self.popcount32(src) : Int32
     LibIntrinsics.popcount32(src)
   end
 
-  def self.popcount64(src)
+  def self.popcount64(src) : Int64
     LibIntrinsics.popcount64(src)
   end
 
@@ -156,12 +161,12 @@ module Intrinsics
     LibIntrinsics.counttrailing128({{src}}, {{zero_is_undef}})
   end
 
-  def self.va_start(ap)
-    LibIntrinsics.va_start(ap)
+  macro va_start(ap)
+    LibIntrinsics.va_start({{ap}})
   end
 
-  def self.va_end(ap)
-    LibIntrinsics.va_end(ap)
+  macro va_end(ap)
+    LibIntrinsics.va_end({{ap}})
   end
 end
 
